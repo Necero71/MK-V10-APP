@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1f14">
+<title>V10 Workbench</title>
+<style>
+  :root{
+    --bg:#1b1f14; --panel:#252b1b; --line:#3a4228; --olive:#6b7a3a;
+    --coyote:#a67c52; --tan:#d2b48c; --text:#e8e2d0; --dim:#8c9078;
+    --hot:#d9822b; --ok:#8fb04a; --bad:#c5523f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:15px/1.4 system-ui,sans-serif;padding:16px 16px 80px;max-width:720px;margin-inline:auto}
+  h1{font-size:18px;letter-spacing:.15em;text-transform:uppercase;margin:0 0 2px;color:var(--tan)}
+  .sub{color:var(--dim);font-size:12px;letter-spacing:.08em;margin-bottom:14px}
+  .panel{background:var(--panel);border:1px solid var(--line);
+    clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,0 100%);
+    padding:12px;margin-bottom:12px}
+  .panel h2{margin:0 0 8px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--coyote)}
+  button{background:var(--olive);color:#fff;border:0;padding:10px 14px;font-weight:700;
+    letter-spacing:.06em;text-transform:uppercase;font-size:12px;
+    clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%)}
+  button.alt{background:var(--coyote)}
+  button.ghost{background:#33392a;color:var(--tan)}
+  button:disabled{opacity:.35}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+  .status{display:flex;align-items:center;gap:8px;font-size:13px}
+  .dot{width:10px;height:10px;background:var(--bad)}
+  .dot.on{background:var(--ok)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px}
+  .cell{background:#1e2316;border:1px solid var(--line);padding:5px 6px;text-align:center}
+  .cell .i{font-size:10px;color:var(--dim)}
+  .cell .h{font:700 16px ui-monospace,monospace}
+  .cell .d{font-size:10px;color:var(--dim)}
+  .cell .l{font-size:10px;color:var(--tan);min-height:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cell.changed{border-color:var(--hot);background:#3a2a14}
+  .cell.changed .h{color:var(--hot)}
+  pre{margin:0;font:12px/1.5 ui-monospace,monospace;white-space:pre-wrap;word-break:break-all;
+    max-height:220px;overflow:auto;background:#161a0f;padding:8px;border:1px solid var(--line)}
+  input[type=text]{width:100%;background:#161a0f;border:1px solid var(--line);color:var(--text);
+    padding:9px;font:14px ui-monospace,monospace}
+  select{background:#161a0f;color:var(--text);border:1px solid var(--line);padding:9px}
+  label{font-size:13px;color:var(--dim)}
+  .warn{color:var(--hot);font-size:12px;margin-top:6px}
+  .diff div{font:13px ui-monospace,monospace;padding:2px 0}
+  .compat{display:none;border-color:var(--bad)}
+</style>
+</head>
+<body>
+
+<h1>V10 Workbench</h1>
+<div class="sub">PXN V10 · BLE · SERVICE 0xFFE0</div>
+
+<div class="panel compat" id="compat">
+  <h2>Browser not supported</h2>
+  Web Bluetooth needs Chrome on Android, or Chrome/Edge on desktop, over HTTPS. iOS Safari won't work.
+</div>
+
+<div class="panel">
+  <h2>Link</h2>
+  <div class="status"><span class="dot" id="dot"></span><span id="status">Disconnected</span></div>
+  <div class="row">
+    <button id="btnConnect">Connect</button>
+    <button id="btnDisc" class="ghost" disabled>Disconnect</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Settings block · FFE1</h2>
+  <div class="grid" id="grid"><span style="color:var(--dim)">Connect to read.</span></div>
+  <div class="row">
+    <button id="btnRead" disabled>Read</button>
+    <button id="btnSnap" class="alt" disabled>Snapshot A</button>
+    <button id="btnCmp" class="ghost" disabled>Compare to A</button>
+    <label><input type="checkbox" id="poll"> poll 1s</label>
+  </div>
+  <div class="row"><label>Tap any byte to label it. Labels are saved on this device.</label></div>
+  <div class="diff" id="diff" style="margin-top:8px"></div>
+</div>
+
+<div class="panel">
+  <h2>Live feed · FFE4 notify</h2>
+  <pre id="log">waiting…</pre>
+  <div class="row">
+    <button id="btnClear" class="ghost">Clear</button>
+    <button id="btnCopy" class="ghost">Copy log</button>
+    <label><input type="checkbox" id="pause"> pause</label>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Raw write · locked</h2>
+  <div class="row" style="margin-top:0">
+    <select id="wTarget"><option value="ffe2">FFE2 (command)</option><option value="ffe1">FFE1 (settings)</option></select>
+    <input type="text" id="wHex" placeholder="hex bytes, e.g. 60 01 ..." style="flex:1">
+  </div>
+  <div class="row">
+    <label><input type="checkbox" id="unlock"> I'm replaying a packet the stock app sent</label>
+  </div>
+  <div class="row"><button id="btnWrite" class="alt" disabled>Send</button></div>
+  <div class="warn">Unknown writes to an FFB base can spike torque or corrupt config. Replay captured packets only.</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const SERVICE = 0xFFE0;
+const CH = { ffe1: 0xFFE1, ffe2: 0xFFE2, ffe4: 0xFFE4 };
+const hex = u8 => [...u8].map(b => b.toString(16).padStart(2,'0')).join(' ');
+const parseHex = s => Uint8Array.from(s.trim().split(/[\s,:-]+/).filter(Boolean).map(x => parseInt(x,16)));
+const store = {
+  get: (k,d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d } catch { return d } },
+  set: (k,v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} }
+};
+
+let device, chars = {}, last = null, snapA = null, prev = null, pollTimer = null;
+let labels = store.get('v10_labels', {});
+let logLines = [];
+
+if (!navigator.bluetooth) $('compat').style.display = 'block';
+
+function setStatus(on, text){
+  $('dot').classList.toggle('on', on);
+  $('status').textContent = text;
+  ['btnDisc','btnRead','btnSnap','btnCmp'].forEach(id => $(id).disabled = !on);
+  $('btnConnect').disabled = on;
+  if (!on) stopPoll();
+}
+
+function log(line){
+  if ($('pause').checked) return;
+  const t = new Date().toLocaleTimeString([], {hour12:false}) + '.' + String(Date.now()%1000).padStart(3,'0');
+  logLines.push(`${t}  ${line}`);
+  if (logLines.length > 300) logLines.shift();
+  const el = $('log'); el.textContent = logLines.join('\n'); el.scrollTop = el.scrollHeight;
+}
+
+async function connect(){
+  try{
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'PXN' }],
+      optionalServices: [SERVICE]
+    });
+    device.addEventListener('gattserverdisconnected', () => { setStatus(false, 'Disconnected'); log('-- disconnected --'); });
+    setStatus(false, 'Connecting…');
+    const server = await device.gatt.connect();
+    const svc = await server.getPrimaryService(SERVICE);
+    chars = {};
+    for (const [k,u] of Object.entries(CH)){
+      try { chars[k] = await svc.getCharacteristic(u) } catch { log(`! ${k} missing`) }
+    }
+    if (chars.ffe4){
+      await chars.ffe4.startNotifications();
+      chars.ffe4.addEventListener('characteristicvaluechanged', e =>
+        log('FFE4  ' + hex(new Uint8Array(e.target.value.buffer)))
+      );
+    }
+    setStatus(true, `Connected · ${device.name || 'PXN'}`);
+    log('-- connected --');
+    await readSettings();
+  }catch(err){
+    setStatus(false, 'Disconnected');
+    log('! ' + err.message);
+  }
+}
+
+async function readSettings(){
+  if (!chars.ffe1) return;
+  try{
+    const v = await chars.ffe1.readValue();
+    const cur = new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength));
+    prev = last; last = cur;
+    renderGrid();
+  }catch(err){ log('! read: ' + err.message) }
+}
+
+function renderGrid(){
+  const g = $('grid'); g.innerHTML = '';
+  [...last].forEach((b,i) => {
+    const c = document.createElement('div');
+    const changed = prev && prev[i] !== b;
+    c.className = 'cell' + (changed ? ' changed' : '');
+    c.innerHTML = `<div class="i">#${i}</div><div class="h">${b.toString(16).padStart(2,'0').toUpperCase()}</div>
+      <div class="d">${b}</div><div class="l">${labels[i] || '·'}</div>`;
+    c.onclick = () => {
+      const name = prompt(`Label for byte #${i}`, labels[i] || '');
+      if (name === null) return;
+      if (name) labels[i] = name; else delete labels[i];
+      store.set('v10_labels', labels); renderGrid();
+    };
+    g.appendChild(c);
+  });
+  if (changed(prev,last)) log('FFE1  changed: ' + hex(last));
+}
+const changed = (a,b) => a && b && (a.length !== b.length || a.some((x,i) => x !== b[i]));
+
+function compare(){
+  const d = $('diff'); d.innerHTML = '';
+  if (!snapA || !last) { d.textContent = 'Take Snapshot A first.'; return; }
+  const n = Math.max(snapA.length, last.length), rows = [];
+  for (let i = 0; i < n; i++){
+    if (snapA[i] !== last[i]){
+      rows.push(`#${i}${labels[i] ? ' ('+labels[i]+')' : ''}: ${snapA[i] ?? '--'} → ${last[i] ?? '--'}  [${(snapA[i]??0).toString(16)} → ${(last[i]??0).toString(16)}]`);
+    }
+  }
+  d.innerHTML = rows.length ? rows.map(r => `<div>${r}</div>`).join('') : '<div style="color:var(--ok)">No differences.</div>';
+}
+
+function stopPoll(){ clearInterval(pollTimer); pollTimer = null; $('poll').checked = false }
+
+$('btnConnect').onclick = connect;
+$('btnDisc').onclick = () => device?.gatt.disconnect();
+$('btnRead').onclick = readSettings;
+$('btnSnap').onclick = () => { snapA = last ? new Uint8Array(last) : null; $('diff').textContent = snapA ? 'Snapshot A saved: ' + hex(snapA) : '' };
+$('btnCmp').onclick = async () => { await readSettings(); compare() };
+$('poll').onchange = e => {
+  clearInterval(pollTimer);
+  if (e.target.checked) pollTimer = setInterval(readSettings, 1000);
+};
+$('btnClear').onclick = () => { logLines = []; $('log').textContent = '' };
+$('btnCopy').onclick = () => navigator.clipboard?.writeText(logLines.join('\n'));
+$('unlock').onchange = e => $('btnWrite').disabled = !(e.target.checked && device?.gatt.connected);
+$('btnWrite').onclick = async () => {
+  try{
+    const bytes = parseHex($('wHex').value);
+    if (!bytes.length || bytes.some(Number.isNaN)) return log('! bad hex');
+    const c = chars[$('wTarget').value];
+    await c.writeValueWithResponse(bytes);
+    log(`WRITE ${$('wTarget').value.toUpperCase()}  ${hex(bytes)}`);
+  }catch(err){ log('! write: ' + err.message) }
+};
+</script>
+</body>
+</html>
