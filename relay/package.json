@@ -1,0 +1,16 @@
+{
+  "name": "kater-relay",
+  "version": "0.1.0",
+  "description": "Kater telemetry relay: reads racing game UDP feeds, normalizes them, streams over WebSocket",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node src/index.js",
+    "sim": "node src/index.js --sim",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

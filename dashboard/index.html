@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1f14">
+<title>Kater</title>
+<style>
+  :root{
+    --bg:#1b1f14; --panel:#252b1b; --line:#3a4228; --olive:#6b7a3a;
+    --coyote:#a67c52; --tan:#d2b48c; --text:#e8e2d0; --dim:#8c9078;
+    --hot:#d9822b; --ok:#8fb04a; --bad:#c5523f; --cold:#5f8fa8;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:15px/1.3 system-ui,sans-serif;padding:12px;
+    padding-bottom:max(12px,env(safe-area-inset-bottom));
+    max-width:900px;margin-inline:auto;display:flex;flex-direction:column;gap:10px;
+    user-select:none;-webkit-user-select:none}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+  header{display:flex;justify-content:space-between;align-items:center}
+  h1{font-size:16px;letter-spacing:.3em;text-transform:uppercase;margin:0;color:var(--tan)}
+  .badge{display:flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--dim)}
+  .dot{width:10px;height:10px;background:var(--bad)}
+  .dot.on{background:var(--ok)}
+  .dot.idle{background:var(--hot)}
+  .panel{background:var(--panel);border:1px solid var(--line);
+    clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,0 100%);padding:12px}
+  .panel h2{margin:0 0 8px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--coyote);font-weight:600}
+
+  /* rev bar */
+  .revs{display:grid;grid-template-columns:repeat(20,1fr);gap:3px;height:18px}
+  .revs i{background:#1e2316;border:1px solid var(--line)}
+  .revs i.on{background:var(--ok);border-color:var(--ok)}
+  .revs i.on.warn{background:var(--hot);border-color:var(--hot)}
+  .revs i.on.max{background:var(--bad);border-color:var(--bad)}
+
+  /* gear / speed */
+  .main{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center}
+  .big{font-weight:800;line-height:.9;color:var(--tan)}
+  #gear{font-size:min(34vw,200px);text-align:center}
+  #speed{font-size:min(20vw,120px);text-align:right}
+  .unit{font-size:12px;letter-spacing:.2em;color:var(--dim);text-align:right}
+  #rpm{font-size:13px;color:var(--dim);text-align:center;margin-top:4px}
+
+  /* pedals + steering */
+  .pedals{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .bar{height:14px;background:#161a0f;border:1px solid var(--line);position:relative}
+  .bar>b{position:absolute;inset:0 auto 0 0;width:0;background:var(--ok)}
+  .bar.brake>b{background:var(--bad)}
+  .bar.fuel>b{background:var(--coyote)}
+  .bar.ers>b{background:var(--cold)}
+  .lbl{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-bottom:4px;letter-spacing:.08em;text-transform:uppercase}
+  .steer{height:10px;margin-top:10px;background:#161a0f;border:1px solid var(--line);position:relative}
+  .steer>b{position:absolute;top:-1px;bottom:-1px;width:4px;left:50%;background:var(--tan);transform:translateX(-50%)}
+  .steer:after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line)}
+
+  /* tyres */
+  .tyres{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .tyre{background:#1e2316;border:1px solid var(--line);padding:8px;text-align:center}
+  .tyre .t{font:700 22px ui-monospace,monospace}
+  .tyre .s{font-size:10px;color:var(--dim);letter-spacing:.08em;min-height:12px}
+  .tyre.cold .t{color:var(--cold)} .tyre.ok .t{color:var(--ok)}
+  .tyre.hot .t{color:var(--hot)} .tyre.over .t{color:var(--bad)}
+
+  /* lap */
+  .lap{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+  .lap .v{font:700 20px ui-monospace,monospace}
+  .lap .k{font-size:10px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
+  .meta{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin-top:8px}
+
+  .idle-note{display:none;text-align:center;color:var(--dim);padding:24px;border:1px dashed var(--line)}
+  body.waiting .idle-note{display:block}
+  body.waiting .live{opacity:.35}
+  @media (min-width:700px){
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  }
+</style>
+</head>
+<body class="waiting">
+
+<header>
+  <h1>Kater</h1>
+  <div class="badge"><span id="game">no game</span><span class="dot" id="dot"></span></div>
+</header>
+
+<div class="idle-note" id="note">Waiting for telemetry. Start a game with UDP output on, or run <span class="mono">npm run sim</span> in <span class="mono">relay/</span>.</div>
+
+<div class="live">
+  <div class="panel">
+    <div class="revs" id="revs"></div>
+    <div class="main" style="margin-top:12px">
+      <div>
+        <div class="big mono" id="gear">N</div>
+        <div id="rpm" class="mono">0 RPM</div>
+      </div>
+      <div>
+        <div class="big mono" id="speed">0</div>
+        <div class="unit">KM/H</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid2" style="margin-top:10px">
+    <div class="panel">
+      <h2>Inputs</h2>
+      <div class="pedals">
+        <div><div class="lbl"><span>Throttle</span><span id="thrV" class="mono">0</span></div><div class="bar"><b id="thr"></b></div></div>
+        <div><div class="lbl"><span>Brake</span><span id="brkV" class="mono">0</span></div><div class="bar brake"><b id="brk"></b></div></div>
+      </div>
+      <div class="steer"><b id="steer"></b></div>
+    </div>
+
+    <div class="panel">
+      <h2>Tyres &middot; surface &deg;C</h2>
+      <div class="tyres" id="tyres"></div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:10px">
+    <h2>Lap</h2>
+    <div class="lap">
+      <div><div class="v" id="cur">--:--.---</div><div class="k">Current</div></div>
+      <div><div class="v" id="last">--:--.---</div><div class="k">Last</div></div>
+      <div><div class="v" id="best">--:--.---</div><div class="k">Best</div></div>
+    </div>
+    <div class="meta"><span id="lapNo">Lap -</span><span id="pos">P-</span><span id="sec">S-</span><span id="drs"></span></div>
+  </div>
+
+  <div class="grid2" style="margin-top:10px">
+    <div class="panel">
+      <div class="lbl"><span>Fuel</span><span id="fuelV" class="mono">--</span></div>
+      <div class="bar fuel"><b id="fuel"></b></div>
+    </div>
+    <div class="panel" id="ersPanel">
+      <div class="lbl"><span>ERS</span><span id="ersV" class="mono">--</span></div>
+      <div class="bar ers"><b id="ers"></b></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+// --- build static bits ---
+const REV_SEGS = 20;
+$('revs').innerHTML = '<i></i>'.repeat(REV_SEGS);
+const revEls = [...$('revs').children];
+const TYRE_NAMES = ['FL', 'FR', 'RL', 'RR'];
+$('tyres').innerHTML = TYRE_NAMES.map(
+  (n, i) => `<div class="tyre" id="ty${i}"><div class="t">--</div><div class="s">${n}</div></div>`
+).join('');
+
+// --- helpers ---
+function fmtTime(ms) {
+  if (ms == null || ms <= 0) return '--:--.---';
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  const r = Math.floor(ms % 1000);
+  return `${m}:${String(s).padStart(2, '0')}.${String(r).padStart(3, '0')}`;
+}
+const pct = (v) => `${Math.round(v * 100)}%`;
+function tyreClass(c) {
+  if (c == null) return '';
+  if (c < 70) return 'cold';
+  if (c < 100) return 'ok';
+  if (c < 115) return 'hot';
+  return 'over';
+}
+
+// --- render ---
+function render(f) {
+  document.body.classList.remove('waiting');
+  $('game').textContent = f.game || '--';
+  $('dot').className = 'dot on';
+
+  const g = f.gear;
+  $('gear').textContent = g < 0 ? 'R' : g === 0 ? 'N' : g;
+  $('speed').textContent = Math.round(f.speedKph);
+  $('rpm').textContent = `${Math.round(f.rpm)}${f.maxRpm ? ' / ' + f.maxRpm : ''} RPM`;
+
+  const ratio = f.maxRpm ? Math.min(1, f.rpm / f.maxRpm) : 0;
+  const lit = Math.round(ratio * REV_SEGS);
+  revEls.forEach((el, i) => {
+    const on = i < lit;
+    el.className = on ? 'on' + (i >= REV_SEGS - 2 ? ' max' : i >= REV_SEGS - 6 ? ' warn' : '') : '';
+  });
+
+  $('thr').style.width = pct(f.throttle);
+  $('brk').style.width = pct(f.brake);
+  $('thrV').textContent = Math.round(f.throttle * 100);
+  $('brkV').textContent = Math.round(f.brake * 100);
+  $('steer').style.left = `${50 + f.steer * 50}%`;
+
+  for (let i = 0; i < 4; i++) {
+    const c = f.tyres.tempC[i];
+    const el = $('ty' + i);
+    el.className = 'tyre ' + tyreClass(c);
+    el.firstChild.textContent = c == null ? '--' : Math.round(c);
+    const wear = f.tyres.wear[i];
+    el.lastChild.textContent = TYRE_NAMES[i] + (wear != null ? ` · ${Math.round(wear * 100)}% worn` : '');
+  }
+
+  $('cur').textContent = fmtTime(f.lap.currentMs);
+  $('last').textContent = fmtTime(f.lap.lastMs);
+  $('best').textContent = fmtTime(f.lap.bestMs);
+  $('lapNo').textContent = `Lap ${f.lap.number ?? '-'}`;
+  $('pos').textContent = `P${f.lap.position ?? '-'}`;
+  $('sec').textContent = `S${f.lap.sector ?? '-'}`;
+  $('drs').textContent = f.drs ? 'DRS' : '';
+
+  if (f.fuel != null) {
+    $('fuel').style.width = pct(f.fuel);
+    $('fuelV').textContent = pct(f.fuel) + (f.fuelLapsLeft != null ? ` · ${f.fuelLapsLeft} laps` : '');
+  }
+  $('ersPanel').style.display = f.ers == null ? 'none' : '';
+  if (f.ers != null) {
+    $('ers').style.width = pct(f.ers);
+    $('ersV').textContent = pct(f.ers);
+  }
+}
+
+// --- connection ---
+// default: same host that served this page. Override: ?relay=192.168.1.20:8080
+const params = new URLSearchParams(location.search);
+const relayHost = params.get('relay') || location.host;
+let retry = 500;
+
+function connect() {
+  const ws = new WebSocket(`ws://${relayHost}/ws`);
+  ws.onopen = () => { retry = 500; $('dot').className = 'dot idle'; };
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'frame') render(msg.frame);
+    else if (msg.type === 'stale') { $('dot').className = 'dot idle'; }
+  };
+  ws.onclose = () => {
+    $('dot').className = 'dot';
+    document.body.classList.add('waiting');
+    setTimeout(connect, retry);
+    retry = Math.min(retry * 2, 5000);
+  };
+  ws.onerror = () => ws.close();
+}
+connect();
+
+// keep the screen on while the dash is open
+async function wake() {
+  try { if ('wakeLock' in navigator) await navigator.wakeLock.request('screen'); } catch {}
+}
+wake();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
+</script>
+</body>
+</html>
