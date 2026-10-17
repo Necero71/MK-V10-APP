@@ -244,7 +244,32 @@ function connect() {
   };
   ws.onerror = () => ws.close();
 }
-connect();
+// demo mode: ?demo=1 runs fake telemetry in the browser, no relay or game needed
+function startDemo() {
+  const GS = [0, 70, 110, 150, 190, 230, 270, 310];
+  const t0 = Date.now();
+  let last = null, best = null, lastIdx = 0;
+  setInterval(() => {
+    const t = (Date.now() - t0) / 1000, L = 60, idx = Math.floor(t / L), lt = t % L;
+    const ph = (lt / L) * Math.PI * 6, base = 0.5 + 0.5 * Math.sin(ph - Math.PI / 2);
+    const sp = 80 + base * 230, ac = Math.cos(ph);
+    let g = 1; while (g < 7 && sp > GS[g]) g++;
+    const ig = Math.max(0, Math.min(1, (sp - GS[g - 1]) / (GS[g] - GS[g - 1])));
+    if (idx !== lastIdx) { last = L * 1000; best = best == null ? last : Math.min(best, last); lastIdx = idx; }
+    const heat = 80 + base * 25;
+    const fuel = Math.max(0.05, 0.8 - t / 1500);
+    render({
+      game: 'DEMO', speedKph: sp, rpm: 5500 + ig * 7200, maxRpm: 13000, gear: g,
+      throttle: ac > 0 ? Math.min(1, ac * 1.6) : 0, brake: ac < 0 ? Math.min(1, -ac * 1.4) : 0,
+      steer: Math.sin(ph * 1.7) * 0.6, drs: ac > 0.9, fuel, fuelLapsLeft: Math.round(fuel * 220) / 10,
+      ers: 0.5 + 0.5 * Math.sin(t / 7),
+      tyres: { tempC: [heat + 4, heat + 6, heat - 3, heat - 2], wear: [0.1, 0.12, 0.08, 0.09].map((w) => w + t / 4000) },
+      lap: { number: idx + 1, position: 1, sector: Math.min(3, Math.floor(lt / 20) + 1), currentMs: lt * 1000, lastMs: last, bestMs: best },
+    });
+  }, 33);
+}
+
+if (params.has('demo')) startDemo(); else connect();
 
 // keep the screen on while the dash is open
 async function wake() {
